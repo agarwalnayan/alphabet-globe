@@ -1,0 +1,79 @@
+:root {
+  --bg: #000810;
+  --bg2: #010f1a;
+  --accent: #00d4ff;
+  --accent2: #ff6b35;
+  --accent3: #7fff00;
+  --text: #e8f4f8;
+  --text-muted: #6a8fa0;
+  --border: rgba(0, 212, 255, 0.2);
+  --glow: 0 0 20px rgba(0, 212, 255, 0.4);
+  --font-display: 'Orbitron', monospace;
+  --font-body: 'Space Mono', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  overflow: hidden;
+  height: 100vh;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+}
+
+/* NAV */
+.app-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 28px;
+  background: rgba(0, 8, 16, 0.9);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+  z-index: 100;
+  position: relative;
+}
+
+.nav-logo {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 4px;
+}
+
+.logo-text { color: var(--text); }
+.logo-accent {
+  color: var(--accent);
+  text-shadow: var(--glow);
+  margin-left: 8px;
+}
+
+.nav-links { display: flex; gap: 8px; }
+
+.nav-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 8px 20px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+}
+
+.nav-btn:hover, .nav-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  text-shadow: var(--glow);
+  box-shadow: var(--glow), inset 0 0 20px rgba(0, 212, 255, 0.05);
+}

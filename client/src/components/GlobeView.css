@@ -1,0 +1,239 @@
+.globe-container {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background: linear-gradient(135deg, #000810 0%, #010f1a 50%, #001a2e 100%);
+}
+
+.globe-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Empty state */
+.empty-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.empty-icon {
+  font-size: 64px;
+  opacity: 0.2;
+  margin-bottom: 16px;
+}
+
+.empty-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 20px;
+  color: rgba(232, 244, 248, 0.4);
+  letter-spacing: 4px;
+  margin-bottom: 8px;
+}
+
+.empty-sub {
+  font-size: 12px;
+  color: rgba(106, 143, 160, 0.6);
+  letter-spacing: 1px;
+}
+
+/* Letter HUD */
+.letter-hud {
+  position: absolute;
+  top: 50%;
+  left: 32px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.letter-display {
+  font-family: 'Orbitron', monospace;
+  font-size: 96px;
+  font-weight: 900;
+  color: rgba(0, 212, 255, 0.12);
+  line-height: 1;
+  letter-spacing: -4px;
+  text-shadow: 0 0 60px rgba(0, 212, 255, 0.3);
+}
+
+.letter-index {
+  font-family: 'Orbitron', monospace;
+  font-size: 11px;
+  color: rgba(0, 212, 255, 0.5);
+  letter-spacing: 3px;
+  margin-top: 4px;
+}
+
+.spin-badge {
+  margin-top: 8px;
+  font-size: 9px;
+  color: #ff6b35;
+  letter-spacing: 2px;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Gesture HUD */
+.gesture-hud {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.gesture-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Orbitron', monospace;
+  font-size: 9px;
+  letter-spacing: 2px;
+  padding: 6px 12px;
+  background: rgba(0, 8, 16, 0.8);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  backdrop-filter: blur(10px);
+}
+
+.gesture-status.ready { color: #7fff00; }
+.gesture-status.loading { color: #ff6b35; }
+
+.gesture-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.gesture-indicator {
+  background: rgba(0, 8, 16, 0.8);
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  padding: 8px 12px;
+  min-width: 140px;
+  backdrop-filter: blur(10px);
+}
+
+.gesture-name {
+  font-family: 'Orbitron', monospace;
+  font-size: 10px;
+  color: #00d4ff;
+  letter-spacing: 2px;
+  margin-bottom: 6px;
+}
+
+.gesture-bar {
+  height: 3px;
+  background: rgba(0, 212, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.gesture-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00d4ff, #7fff00);
+  transition: width 0.1s ease;
+  border-radius: 2px;
+}
+
+/* Webcam preview */
+.webcam-preview {
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.webcam-preview canvas {
+  display: block;
+  width: 180px;
+  height: 135px;
+}
+
+/* Gesture guide */
+.gesture-guide {
+  position: absolute;
+  bottom: 100px;
+  left: 24px;
+  background: rgba(0, 8, 16, 0.75);
+  border: 1px solid rgba(0, 212, 255, 0.12);
+  padding: 14px 18px;
+  backdrop-filter: blur(12px);
+  min-width: 180px;
+}
+
+.guide-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: rgba(0, 212, 255, 0.6);
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+  padding-bottom: 6px;
+}
+
+.guide-items { display: flex; flex-direction: column; gap: 6px; }
+
+.guide-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  color: rgba(232, 244, 248, 0.55);
+  letter-spacing: 0.5px;
+}
+
+.guide-icon { font-size: 16px; }
+
+.guide-stop {
+  color: #ff6b35;
+  font-weight: bold;
+  text-shadow: 0 0 10px rgba(255, 107, 53, 0.6);
+}
+
+/* Manual controls */
+.manual-controls {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.ctrl-btn {
+  background: rgba(0, 8, 16, 0.85);
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  color: #00d4ff;
+  padding: 10px 24px;
+  font-family: 'Orbitron', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  backdrop-filter: blur(10px);
+}
+
+.ctrl-btn:hover {
+  background: rgba(0, 212, 255, 0.1);
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+}
+
+.spin-btn.active {
+  border-color: #ff6b35;
+  color: #ff6b35;
+  background: rgba(255, 107, 53, 0.1);
+}
+
+.spin-btn.active:hover {
+  box-shadow: 0 0 20px rgba(255, 107, 53, 0.3);
+}
