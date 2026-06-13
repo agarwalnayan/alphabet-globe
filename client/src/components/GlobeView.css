@@ -2,7 +2,11 @@
   position: relative;
   flex: 1;
   overflow: hidden;
-  background: #000000;
+  background: #0d1424;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.22), transparent 24%),
+    radial-gradient(circle at 80% 0%, rgba(167, 139, 250, 0.26), transparent 28%),
+    linear-gradient(135deg, #0d1424 0%, #17233d 100%);
 }
 
 .globe-container canvas {

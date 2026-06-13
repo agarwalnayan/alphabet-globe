@@ -7,15 +7,17 @@ import './GlobeView.css';
 
 // Distribute N points on a sphere (Fibonacci spiral)
 function fibonacciSpherePoints(n, radius = 3.2) {
+  // Fibonacci-style elevation (theta) but use sequential phi so
+  // items map to indices in order (A→Z) around the globe.
   const points = [];
-  const goldenRatio = (1 + Math.sqrt(5)) / 2;
   for (let i = 0; i < n; i++) {
     const theta = Math.acos(1 - (2 * (i + 0.5)) / n);
-    const phi = (2 * Math.PI * i) / goldenRatio;
+    const phi = (2 * Math.PI * i) / n; // sequential by index
     points.push({
       x: radius * Math.sin(theta) * Math.cos(phi),
       y: radius * Math.cos(theta),
       z: radius * Math.sin(theta) * Math.sin(phi),
+      phi,
     });
   }
   return points;
@@ -43,13 +45,14 @@ function LetterModel({ url, position, isActive, index, totalLetters, showOnlyCur
   useFrame((state, delta) => {
     if (!groupRef.current) return;
     
-    // Smooth scale transition
+    // Smooth scale transition + gentle pulsing for fun
     currentScale.current = THREE.MathUtils.lerp(
       currentScale.current,
       targetScale,
       delta * 6
     );
-    groupRef.current.scale.setScalar(currentScale.current);
+    const pulse = 1 + 0.06 * Math.sin(state.clock.elapsedTime * 2 + index);
+    groupRef.current.scale.setScalar(currentScale.current * pulse);
 
     // Center the letter when showing only current
     if (showOnlyCurrentLetter && isActive) {
@@ -75,6 +78,8 @@ function LetterModel({ url, position, isActive, index, totalLetters, showOnlyCur
   const dist = pos3.distanceTo(frontPos);
   const opacity = showOnlyCurrentLetter && isActive ? 1 : Math.max(0.15, 1 - dist / 7);
 
+  const hue = Math.round((index / Math.max(totalLetters, 1)) * 360);
+
   return (
     <group ref={groupRef} position={position}>
       <primitive
@@ -83,7 +88,7 @@ function LetterModel({ url, position, isActive, index, totalLetters, showOnlyCur
         style={{ opacity }}
       />
       {isActive && (
-        <pointLight intensity={3} distance={2.5} color="#00d4ff" />
+        <pointLight intensity={3} distance={2.5} color={`hsl(${hue},80%,60%)`} />
       )}
     </group>
   );
@@ -97,13 +102,14 @@ function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentInd
   const prevSpinning = useRef(isSpinning);
   const lastFocusIndex = useRef(currentIndex);
 
-  const goldenRatio = (1 + Math.sqrt(5)) / 2;
+  // Ensure models are placed in strict alphabetical order by letter
+  const sortedModels = React.useMemo(() => {
+    return [...models].sort((a, b) => a.letter.localeCompare(b.letter));
+  }, [models]);
+
   const points = React.useMemo(() => {
-    return fibonacciSpherePoints(models.length).map((point, i) => ({
-      ...point,
-      phi: (2 * Math.PI * i) / goldenRatio,
-    }));
-  }, [models.length, goldenRatio]);
+    return fibonacciSpherePoints(sortedModels.length);
+  }, [sortedModels.length]);
 
   const normalizeAngle = useCallback((angle) => {
     return THREE.MathUtils.euclideanModulo(angle + Math.PI, 2 * Math.PI) - Math.PI;
@@ -136,10 +142,10 @@ function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentInd
   });
 
   useEffect(() => {
-    if (models.length === 0) return;
-    const phi = (2 * Math.PI * currentIndex) / goldenRatio;
+    if (sortedModels.length === 0) return;
+    const phi = (2 * Math.PI * currentIndex) / Math.max(sortedModels.length, 1);
     targetRotation.current = -phi;
-  }, [currentIndex, models.length, goldenRatio]);
+  }, [currentIndex, sortedModels.length]);
 
   useEffect(() => {
     if (prevSpinning.current && !isSpinning && onCurrentIndexChange) {
@@ -166,18 +172,18 @@ function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentInd
     }
   });
 
-  if (models.length === 0) return null;
+  if (sortedModels.length === 0) return null;
 
   return (
     <group ref={globeRef} position={[-1.3, 0, 0]}>
-      {models.map((model, i) => (
+      {sortedModels.map((model, i) => (
         <LetterModel
           key={model.letter}
           url={model.url}
           position={[points[i].x, points[i].y, points[i].z]}
           isActive={i === currentIndex && !isSpinning}
           index={i}
-          totalLetters={models.length}
+          totalLetters={sortedModels.length}
           showOnlyCurrentLetter={showOnlyCurrentLetter}
         />
       ))}
@@ -209,8 +215,21 @@ export default function GlobeView({ models }) {
   const [gestureConfidence, setGestureConfidence] = useState(0);
   const [showOnlyCurrentLetter, setShowOnlyCurrentLetter] = useState(false);
   const lastGestureRef = useRef('NONE');
+  const recentSwipeAt = useRef(0);
 
   const handleGesture = useCallback((detectedGesture) => {
+    const now = performance.now();
+    if (detectedGesture === 'SWIPE_LEFT' || detectedGesture === 'SWIPE_RIGHT') {
+      recentSwipeAt.current = now;
+    }
+
+    if (
+      (detectedGesture === 'FIST' || detectedGesture === 'SPIN') &&
+      now - recentSwipeAt.current < 700
+    ) {
+      return;
+    }
+
     setGesture(detectedGesture);
     if (detectedGesture === 'NONE') {
       lastGestureRef.current = 'NONE';
@@ -319,7 +338,7 @@ export default function GlobeView({ models }) {
           <span>{isReady ? 'HAND TRACKING ACTIVE' : 'LOADING HAND TRACKER...'}</span>
         </div>
 
-        {gesture && gesture !== 'NONE' && (
+        {gesture && gesture !== 'NONE' && gesture !== 'OPEN_PALM' && gesture !== 'FIST' && gesture !== 'SPIN' && (
           <div className="gesture-indicator">
             <div className="gesture-name">{gesture.replace('_', ' ')}</div>
             <div className="gesture-bar">
