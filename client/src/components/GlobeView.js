@@ -90,11 +90,12 @@ function LetterModel({ url, position, isActive, index, totalLetters, showOnlyCur
 }
 
 // Globe that rotates based on currentIndex
-function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentIndexChange, showOnlyCurrentLetter }) {
+function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentIndexChange, showOnlyCurrentLetter, onFocusIndexChange }) {
   const globeRef = useRef();
   const targetRotation = useRef(0);
   const currentRotation = useRef(0);
   const prevSpinning = useRef(isSpinning);
+  const lastFocusIndex = useRef(currentIndex);
 
   const goldenRatio = (1 + Math.sqrt(5)) / 2;
   const points = React.useMemo(() => {
@@ -124,6 +125,15 @@ function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentInd
 
     return bestIndex;
   }, [currentIndex, normalizeAngle, points]);
+
+  useFrame(() => {
+    if (!globeRef.current || !onFocusIndexChange) return;
+    const focusIndex = computeFrontIndex();
+    if (focusIndex !== lastFocusIndex.current) {
+      lastFocusIndex.current = focusIndex;
+      onFocusIndexChange(focusIndex);
+    }
+  });
 
   useEffect(() => {
     if (models.length === 0) return;
@@ -159,7 +169,7 @@ function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentInd
   if (models.length === 0) return null;
 
   return (
-    <group ref={globeRef}>
+    <group ref={globeRef} position={[-1.3, 0, 0]}>
       {models.map((model, i) => (
         <LetterModel
           key={model.letter}
@@ -192,6 +202,7 @@ function EquatorRing() {
 
 export default function GlobeView({ models }) {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [focusedIndex, setFocusedIndex] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [spinSpeed, setSpinSpeed] = useState(0.8);
   const [gesture, setGesture] = useState('NONE');
@@ -235,7 +246,7 @@ export default function GlobeView({ models }) {
   const goPrev = () => setCurrentIndex(prev => (prev - 1 + Math.max(models.length, 1)) % Math.max(models.length, 1));
   const toggleSpin = () => setIsSpinning(s => !s);
 
-  const currentLetter = models[currentIndex]?.letter || '?';
+  const currentLetter = models[focusedIndex]?.letter || models[currentIndex]?.letter || '?';
 
   const resolveUrl = (url) => {
   if (url.startsWith('http')) return url;
@@ -248,16 +259,14 @@ export default function GlobeView({ models }) {
     <div className="globe-container">
       {/* 3D Canvas */}
       <Canvas
-        camera={{ position: [0, 0, 8], fov: 55 }}
-        gl={{ antialias: true, alpha: false }}
-        style={{ background: 'radial-gradient(ellipse at center, #001428 0%, #000810 70%, #000000 100%)' }}
+        camera={{ position: [-0.9, 0, 8], fov: 55 }}
+        gl={{ antialias: true, alpha: true }}
+        style={{ background: 'transparent' }}
       >
         <ambientLight intensity={0.4} />
         <directionalLight position={[5, 5, 5]} intensity={1.2} color="#ffffff" />
         <pointLight position={[-5, 3, -5]} intensity={0.8} color="#1a4fff" />
         <pointLight position={[5, -3, 5]} intensity={0.6} color="#ff6b35" />
-
-        <Stars radius={100} depth={50} count={3000} factor={3} fade speed={0.5} />
 
         <Suspense fallback={null}>
           {resolvedModels.length > 0 && (
@@ -267,6 +276,7 @@ export default function GlobeView({ models }) {
               isSpinning={isSpinning}
               spinSpeed={spinSpeed}
               onCurrentIndexChange={setCurrentIndex}
+              onFocusIndexChange={setFocusedIndex}
               showOnlyCurrentLetter={showOnlyCurrentLetter}
             />
           )}
@@ -297,7 +307,7 @@ export default function GlobeView({ models }) {
       {models.length > 0 && (
         <div className="letter-hud">
           <div className="letter-display">{currentLetter}</div>
-          <div className="letter-index">{currentIndex + 1} / {models.length}</div>
+          <div className="letter-index">{focusedIndex + 1} / {models.length}</div>
           {isSpinning && <div className="spin-badge">● AUTO SPIN</div>}
         </div>
       )}
@@ -321,29 +331,29 @@ export default function GlobeView({ models }) {
         {/* Webcam preview */}
         <div className="webcam-preview">
           <video ref={videoRef} style={{ display: 'none' }} />
-          <canvas ref={canvasRef} width={180} height={135} />
+          <canvas ref={canvasRef} width={260} height={195} />
         </div>
-      </div>
 
-      {/* Gesture Guide */}
-      <div className="gesture-guide">
-        <div className="guide-title">GESTURES</div>
-        <div className="guide-items">
-          <div className="guide-item">
-            <span className="guide-icon">👈</span>
-            <span>Swipe Left → Next</span>
-          </div>
-          <div className="guide-item">
-            <span className="guide-icon">👉</span>
-            <span>Swipe Right → Prev</span>
-          </div>
-          <div className="guide-item">
-            <span className="guide-icon">✋</span>
-            <span>Open Palm → <span className="guide-stop">Stop</span></span>
-          </div>
-          <div className="guide-item">
-            <span className="guide-icon">✊</span>
-            <span>Fist → Auto Spin</span>
+        <div className="gesture-guide">
+          <div className="guide-title">HOW TO CONTROL</div>
+          <div className="guide-subtitle">Use your hand in front of the camera to move the globe.</div>
+          <div className="guide-items">
+            <div className="guide-item">
+              <span className="guide-icon">👈</span>
+              <span>Swipe Left to move to the next letter.</span>
+            </div>
+            <div className="guide-item">
+              <span className="guide-icon">👉</span>
+              <span>Swipe Right to move to the previous letter.</span>
+            </div>
+            <div className="guide-item">
+              <span className="guide-icon">✋</span>
+              <span>Open Palm to stop and highlight the current letter.</span>
+            </div>
+            <div className="guide-item">
+              <span className="guide-icon">✊</span>
+              <span>Fist to start auto spin and keep the globe moving.</span>
+            </div>
           </div>
         </div>
       </div>
