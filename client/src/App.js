@@ -9,7 +9,7 @@ export default function App() {
 
   const fetchModels = async () => {
   try {
-    const API_URL = process.env.REACT_APP_API_URL;
+    const API_URL = 'https://alphabet-globe.onrender.com';
 
     console.log("API_URL =", API_URL);
 
