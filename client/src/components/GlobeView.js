@@ -205,6 +205,9 @@ export default function GlobeView({ models }) {
   const [gesture, setGesture] = useState('NONE');
   const [gestureConfidence, setGestureConfidence] = useState(0);
   const [showOnlyCurrentLetter, setShowOnlyCurrentLetter] = useState(false);
+  const [isSetupComplete, setIsSetupComplete] = useState(false);
+  const setupTimeoutRef = useRef(null);
+  const idleTimeoutRef = useRef(null);
   const lastGestureRef = useRef('NONE');
   const recentSwipeAt = useRef(0);
 
@@ -253,7 +256,67 @@ export default function GlobeView({ models }) {
     }
   }, [displayModelCount]);
 
-  const { videoRef, canvasRef, isReady } = useHandGestures(handleGesture);
+  const { videoRef, canvasRef, isReady, isHandDetected, numHandsDetected } = useHandGestures(handleGesture);
+
+  useEffect(() => {
+    if (numHandsDetected > 1) {
+      setIsSpinning(false);
+    }
+  }, [numHandsDetected]);
+
+  useEffect(() => {
+    if (isSetupComplete || !isReady) return;
+    
+    if (numHandsDetected === 1) {
+      if (!setupTimeoutRef.current) {
+        setupTimeoutRef.current = setTimeout(() => {
+          setIsSetupComplete(true);
+        }, 2000);
+      }
+    } else {
+      if (setupTimeoutRef.current) {
+        clearTimeout(setupTimeoutRef.current);
+        setupTimeoutRef.current = null;
+      }
+    }
+
+    return () => {
+      if (setupTimeoutRef.current) {
+        clearTimeout(setupTimeoutRef.current);
+      }
+    };
+  }, [numHandsDetected, isSetupComplete, isReady]);
+
+  // Idle timeout: Reset to setup mode if no hands are detected for 10 seconds
+  useEffect(() => {
+    if (!isSetupComplete) {
+      if (idleTimeoutRef.current) {
+        clearTimeout(idleTimeoutRef.current);
+        idleTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    if (numHandsDetected === 0) {
+      if (!idleTimeoutRef.current) {
+        idleTimeoutRef.current = setTimeout(() => {
+          setIsSetupComplete(false);
+          setIsSpinning(false); // Stop spinning when resetting
+        }, 10000);
+      }
+    } else {
+      if (idleTimeoutRef.current) {
+        clearTimeout(idleTimeoutRef.current);
+        idleTimeoutRef.current = null;
+      }
+    }
+
+    return () => {
+      if (idleTimeoutRef.current) {
+        clearTimeout(idleTimeoutRef.current);
+      }
+    };
+  }, [numHandsDetected, isSetupComplete]);
 
   const goNext = () => setCurrentIndex(prev => (prev + 1) % displayModelCount);
   const goPrev = () => setCurrentIndex(prev => (prev - 1 + displayModelCount) % displayModelCount);
@@ -271,7 +334,46 @@ export default function GlobeView({ models }) {
   const resolvedModels = sortedModels.map(m => ({ ...m, url: resolveUrl(m.url) }));
 
   return (
-    <div className="globe-container">
+    <div className={`globe-container ${!isSetupComplete ? 'setup-mode' : ''}`}>
+      {/* Setup Overlay Background */}
+      {!isSetupComplete && (
+        <div className="setup-overlay">
+          <div className="setup-header">
+            <h2 className="setup-title">TRACKING CALIBRATION</h2>
+            <p className="setup-subtitle">Ensure exactly <strong>ONE</strong> hand is visible to the camera.</p>
+            <div className={`setup-status-text ${!isReady ? 'loading' : numHandsDetected === 1 ? 'success' : 'error'}`}>
+              {!isReady ? 'LOADING MODEL...' :
+               numHandsDetected === 0 ? 'PLEASE SHOW ONE HAND' :
+               numHandsDetected > 1 ? 'MULTIPLE HANDS DETECTED!' :
+               'PERFECT! HOLD STEADY...'}
+            </div>
+            {numHandsDetected === 1 && (
+              <div className="setup-timer-bar">
+                <div className="setup-timer-fill" />
+              </div>
+            )}
+          </div>
+
+          <div className="setup-tutorial">
+            <h3>HOW TO PLAY</h3>
+            <div className="tutorial-steps">
+              <div className="tutorial-step">
+                <span className="tutorial-icon">✊</span>
+                <span>Make a <strong>FIST</strong> to auto-spin</span>
+              </div>
+              <div className="tutorial-step">
+                <span className="tutorial-icon">✋</span>
+                <span>Open your <strong>PALM</strong> to stop</span>
+              </div>
+              <div className="tutorial-step">
+                <span className="tutorial-icon">👈</span>
+                <span><strong>SWIPE</strong> to switch letters</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 3D Canvas */}
       <Canvas
         camera={{ position: [-0.9, 0, 8], fov: 55 }}
@@ -347,9 +449,9 @@ export default function GlobeView({ models }) {
 
       {/* Gesture HUD */}
       <div className="gesture-hud">
-        <div className={`gesture-status ${isReady ? 'ready' : 'loading'}`}>
+        <div className={`gesture-status ${!isReady ? 'loading' : numHandsDetected > 1 ? 'error' : isHandDetected ? 'ready' : 'not-detected'}`}>
           <div className="gesture-dot" />
-          <span>{isReady ? 'HAND TRACKING ACTIVE' : 'LOADING HAND TRACKER...'}</span>
+          <span>{!isReady ? 'LOADING HAND TRACKER...' : numHandsDetected > 1 ? 'MULTIPLE HANDS DETECTED!' : isHandDetected ? 'HAND DETECTED' : 'HAND NOT DETECTED'}</span>
         </div>
 
         {gesture && gesture !== 'NONE' && gesture !== 'OPEN_PALM' && gesture !== 'FIST' && gesture !== 'SPIN' && (
@@ -398,6 +500,7 @@ export default function GlobeView({ models }) {
           {isSpinning ? '⏸ STOP' : '▶ SPIN'}
         </button>
         <button className="ctrl-btn" onClick={goNext}>NEXT ▶</button>
+        <button className="ctrl-btn" onClick={() => { setIsSetupComplete(false); setIsSpinning(false); }}>🔄 RECALIBRATE</button>
       </div>
     </div>
   );

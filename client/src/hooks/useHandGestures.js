@@ -43,6 +43,10 @@ export default function useHandGestures(onGesture) {
   const handsRef = useRef(null);
   const cameraRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
+  const [isHandDetected, setIsHandDetected] = useState(false);
+  const [numHandsDetected, setNumHandsDetected] = useState(0);
+  const handDetectedRef = useRef(false);
+  const numHandsRef = useRef(0);
   const swipeTrack = useRef({ points: [], locked: false });
   const lastSwipeAt = useRef(0);
 
@@ -105,7 +109,7 @@ export default function useHandGestures(onGesture) {
         });
 
         hands.setOptions({
-          maxNumHands: 1,
+          maxNumHands: 2,
           modelComplexity: 1,
           minDetectionConfidence: 0.7,
           minTrackingConfidence: 0.6
@@ -125,69 +129,95 @@ export default function useHandGestures(onGesture) {
             ctx.drawImage(results.image, -width, 0, width, height);
             ctx.restore();
           }
+          const numHands = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
+          
+          if (numHands !== numHandsRef.current) {
+            numHandsRef.current = numHands;
+            setNumHandsDetected(numHands);
+          }
 
-          if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-            const landmarks = results.multiHandLandmarks[0];
-            // Mirror x for display and for gesture detection so swipe maps to the visible camera preview
-            const mirrored = landmarks.map(lm => ({ ...lm, x: 1 - lm.x }));
-            drawHand(mirrored, ctx, width, height);
+          if (numHands > 0) {
+            if (!handDetectedRef.current) {
+              handDetectedRef.current = true;
+              setIsHandDetected(true);
+            }
+            
+            // Draw all detected hands
+            results.multiHandLandmarks.forEach(lm => {
+              const mirrored = lm.map(p => ({ ...p, x: 1 - p.x }));
+              drawHand(mirrored, ctx, width, height);
+            });
 
-            const gesture = classifyGesture(landmarks);
-            const now = performance.now();
-            let emittedGesture = gesture;
+            // Only process gestures if exactly ONE hand is detected
+            if (numHands === 1) {
+              const landmarks = results.multiHandLandmarks[0];
+              const mirrored = landmarks.map(lm => ({ ...lm, x: 1 - lm.x }));
+              const gesture = classifyGesture(landmarks);
+              const now = performance.now();
+              let emittedGesture = gesture;
 
-            const palmPoints = [0, 1, 2, 5, 9, 13, 17];
-            const handCenter = palmPoints.reduce(
-              (acc, idx) => ({ x: acc.x + mirrored[idx].x, y: acc.y + mirrored[idx].y }),
-              { x: 0, y: 0 }
-            );
-            handCenter.x /= palmPoints.length;
-            handCenter.y /= palmPoints.length;
+              const palmPoints = [0, 1, 2, 5, 9, 13, 17];
+              const handCenter = palmPoints.reduce(
+                (acc, idx) => ({ x: acc.x + mirrored[idx].x, y: acc.y + mirrored[idx].y }),
+                { x: 0, y: 0 }
+              );
+              handCenter.x /= palmPoints.length;
+              handCenter.y /= palmPoints.length;
 
-            const horizontalThreshold = 0.12;
-            const verticalThreshold = 0.15;
-            const unlockDistance = 0.06;
-            const minSwipeDuration = 80;
-            const maxSwipeDuration = 1000;
+              const horizontalThreshold = 0.12;
+              const verticalThreshold = 0.15;
+              const unlockDistance = 0.06;
+              const minSwipeDuration = 80;
+              const maxSwipeDuration = 1000;
 
-            if (gesture === 'OPEN_PALM') {
-              const points = swipeTrack.current.points;
-              points.push({ x: handCenter.x, y: handCenter.y, time: now });
-              if (points.length > 8) points.shift();
+              if (gesture === 'OPEN_PALM') {
+                const points = swipeTrack.current.points;
+                points.push({ x: handCenter.x, y: handCenter.y, time: now });
+                if (points.length > 8) points.shift();
 
-              const first = points[0];
-              const dx = handCenter.x - first.x;
-              const dy = handCenter.y - first.y;
-              const horizontalMovement = Math.abs(dx);
-              const verticalMovement = Math.abs(dy);
-              const duration = now - first.time;
+                const first = points[0];
+                const dx = handCenter.x - first.x;
+                const dy = handCenter.y - first.y;
+                const horizontalMovement = Math.abs(dx);
+                const verticalMovement = Math.abs(dy);
+                const duration = now - first.time;
 
-              if (swipeTrack.current.locked) {
-                if (horizontalMovement < unlockDistance && verticalMovement < unlockDistance) {
-                  swipeTrack.current.locked = false;
+                if (swipeTrack.current.locked) {
+                  if (horizontalMovement < unlockDistance && verticalMovement < unlockDistance) {
+                    swipeTrack.current.locked = false;
+                    swipeTrack.current.points = [];
+                  }
+                } else if (
+                  points.length >= 3 &&
+                  duration >= minSwipeDuration &&
+                  duration <= maxSwipeDuration &&
+                  horizontalMovement > horizontalThreshold &&
+                  horizontalMovement > verticalMovement * 2 &&
+                  verticalMovement < verticalThreshold &&
+                  now - lastSwipeAt.current > 350
+                ) {
+                  emittedGesture = dx > 0 ? 'SWIPE_RIGHT' : 'SWIPE_LEFT';
+                  lastSwipeAt.current = now;
+                  swipeTrack.current.locked = true;
                   swipeTrack.current.points = [];
                 }
-              } else if (
-                points.length >= 3 &&
-                duration >= minSwipeDuration &&
-                duration <= maxSwipeDuration &&
-                horizontalMovement > horizontalThreshold &&
-                horizontalMovement > verticalMovement * 2 &&
-                verticalMovement < verticalThreshold &&
-                now - lastSwipeAt.current > 350
-              ) {
-                emittedGesture = dx > 0 ? 'SWIPE_RIGHT' : 'SWIPE_LEFT';
-                lastSwipeAt.current = now;
-                swipeTrack.current.locked = true;
+              } else {
                 swipeTrack.current.points = [];
+                swipeTrack.current.locked = false;
               }
+
+              onGesture(emittedGesture);
             } else {
+              // Too many hands for reliable gestures
               swipeTrack.current.points = [];
               swipeTrack.current.locked = false;
+              onGesture('NONE');
             }
-
-            onGesture(emittedGesture);
           } else {
+            if (handDetectedRef.current) {
+              handDetectedRef.current = false;
+              setIsHandDetected(false);
+            }
             onGesture('NONE');
           }
         });
@@ -243,5 +273,5 @@ export default function useHandGestures(onGesture) {
     };
   }, [onGesture, drawHand]);
 
-  return { videoRef, canvasRef, isReady };
+  return { videoRef, canvasRef, isReady, isHandDetected, numHandsDetected };
 }
