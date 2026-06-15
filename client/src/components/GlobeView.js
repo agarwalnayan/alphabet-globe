@@ -3,16 +3,17 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import useHandGestures from '../hooks/useHandGestures';
+import { sortModelsAlphabetically } from './globeUtils';
 import './GlobeView.css';
 
 // Distribute N points on a sphere (Fibonacci spiral)
 function fibonacciSpherePoints(n, radius = 3.2) {
-  // Fibonacci-style elevation (theta) but use sequential phi so
-  // items map to indices in order (A→Z) around the globe.
+  // Fibonacci-style elevation (theta) but use a negative phi progression so
+  // the letters advance in the same direction the UI expects as the index increases.
   const points = [];
   for (let i = 0; i < n; i++) {
     const theta = Math.acos(1 - (2 * (i + 0.5)) / n);
-    const phi = (2 * Math.PI * i) / n; // sequential by index
+    const phi = -(2 * Math.PI * i) / n;
     points.push({
       x: radius * Math.sin(theta) * Math.cos(phi),
       y: radius * Math.cos(theta),
@@ -115,9 +116,11 @@ function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentInd
     return THREE.MathUtils.euclideanModulo(angle + Math.PI, 2 * Math.PI) - Math.PI;
   }, []);
 
+  const frontOffset = Math.PI / 2;
+
   const computeFrontIndex = useCallback(() => {
     if (!globeRef.current) return currentIndex;
-    const frontAngle = normalizeAngle(-globeRef.current.rotation.y);
+    const frontAngle = normalizeAngle(-globeRef.current.rotation.y + frontOffset);
     let bestIndex = 0;
     let bestDiff = Infinity;
 
@@ -144,7 +147,7 @@ function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentInd
   useEffect(() => {
     if (sortedModels.length === 0) return;
     const phi = (2 * Math.PI * currentIndex) / Math.max(sortedModels.length, 1);
-    targetRotation.current = -phi;
+    targetRotation.current = frontOffset - phi;
   }, [currentIndex, sortedModels.length]);
 
   useEffect(() => {
@@ -217,6 +220,9 @@ export default function GlobeView({ models }) {
   const lastGestureRef = useRef('NONE');
   const recentSwipeAt = useRef(0);
 
+  const sortedModels = React.useMemo(() => sortModelsAlphabetically(models), [models]);
+  const displayModelCount = Math.max(sortedModels.length, 1);
+
   const handleGesture = useCallback((detectedGesture) => {
     const now = performance.now();
     if (detectedGesture === 'SWIPE_LEFT' || detectedGesture === 'SWIPE_RIGHT') {
@@ -245,11 +251,11 @@ export default function GlobeView({ models }) {
     if (detectedGesture === 'SWIPE_LEFT') {
       setIsSpinning(false);
       setShowOnlyCurrentLetter(true);
-      setCurrentIndex(prev => (prev + 1) % Math.max(models.length, 1));
+      setCurrentIndex(prev => (prev + 1) % displayModelCount);
     } else if (detectedGesture === 'SWIPE_RIGHT') {
       setIsSpinning(false);
       setShowOnlyCurrentLetter(true);
-      setCurrentIndex(prev => (prev - 1 + Math.max(models.length, 1)) % Math.max(models.length, 1));
+      setCurrentIndex(prev => (prev - 1 + displayModelCount) % displayModelCount);
     } else if (detectedGesture === 'STOP' || detectedGesture === 'OPEN_PALM') {
       setIsSpinning(false);
       setShowOnlyCurrentLetter(true);
@@ -257,22 +263,23 @@ export default function GlobeView({ models }) {
       setShowOnlyCurrentLetter(false);
       setIsSpinning(true);
     }
-  }, [models.length]);
+  }, [displayModelCount]);
 
   const { videoRef, canvasRef, isReady } = useHandGestures(handleGesture);
 
-  const goNext = () => setCurrentIndex(prev => (prev + 1) % Math.max(models.length, 1));
-  const goPrev = () => setCurrentIndex(prev => (prev - 1 + Math.max(models.length, 1)) % Math.max(models.length, 1));
+  const goNext = () => setCurrentIndex(prev => (prev + 1) % displayModelCount);
+  const goPrev = () => setCurrentIndex(prev => (prev - 1 + displayModelCount) % displayModelCount);
   const toggleSpin = () => setIsSpinning(s => !s);
 
-  const currentLetter = models[focusedIndex]?.letter || models[currentIndex]?.letter || '?';
+  const displayIndex = isSpinning ? focusedIndex : currentIndex;
+  const currentLetter = sortedModels[displayIndex]?.letter || '?';
 
   const resolveUrl = (url) => {
-  if (url.startsWith('http')) return url;
-  return url; // CRA proxy handles it
-};
+    if (url.startsWith('http')) return url;
+    return url; // CRA proxy handles it
+  };
 
-  const resolvedModels = models.map(m => ({ ...m, url: resolveUrl(m.url) }));
+  const resolvedModels = sortedModels.map(m => ({ ...m, url: resolveUrl(m.url) }));
 
   return (
     <div className="globe-container">
@@ -314,7 +321,7 @@ export default function GlobeView({ models }) {
       </Canvas>
 
       {/* Empty state */}
-      {models.length === 0 && (
+      {sortedModels.length === 0 && (
         <div className="empty-state">
           <div className="empty-icon">⬡</div>
           <p className="empty-title">No Models Loaded</p>
@@ -323,10 +330,10 @@ export default function GlobeView({ models }) {
       )}
 
       {/* HUD — current letter */}
-      {models.length > 0 && (
+      {sortedModels.length > 0 && (
         <div className="letter-hud">
           <div className="letter-display">{currentLetter}</div>
-          <div className="letter-index">{focusedIndex + 1} / {models.length}</div>
+          <div className="letter-index">{displayIndex + 1} / {sortedModels.length}</div>
           {isSpinning && <div className="spin-badge">● AUTO SPIN</div>}
         </div>
       )}
