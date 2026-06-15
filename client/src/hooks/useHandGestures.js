@@ -49,6 +49,8 @@ export default function useHandGestures(onGesture) {
   const numHandsRef = useRef(0);
   const swipeTrack = useRef({ points: [], locked: false });
   const lastSwipeAt = useRef(0);
+  const stableHandCountRef = useRef(0);
+  const handCountTransitionRef = useRef(0);
 
   const drawHand = useCallback((landmarks, ctx, width, height) => {
     if (!landmarks) return;
@@ -116,9 +118,10 @@ export default function useHandGestures(onGesture) {
         });
 
         hands.onResults((results) => {
-          if (!canvasRef.current) return;
+          if (!mounted || !canvasRef.current) return;
           const ctx = canvasRef.current.getContext('2d');
           const { width, height } = canvasRef.current;
+          const activeLandmarks = results.multiHandLandmarks || [];
 
           ctx.clearRect(0, 0, width, height);
 
@@ -129,31 +132,53 @@ export default function useHandGestures(onGesture) {
             ctx.drawImage(results.image, -width, 0, width, height);
             ctx.restore();
           }
-          const numHands = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
-          
-          if (numHands !== numHandsRef.current) {
-            numHandsRef.current = numHands;
-            setNumHandsDetected(numHands);
+          const numHands = activeLandmarks.length;
+          const now = performance.now();
+
+          if (numHands !== stableHandCountRef.current) {
+            if (handCountTransitionRef.current === 0) {
+              handCountTransitionRef.current = now;
+            }
+
+            if (now - handCountTransitionRef.current >= 140) {
+              stableHandCountRef.current = numHands;
+              handCountTransitionRef.current = 0;
+            }
+          } else {
+            handCountTransitionRef.current = 0;
           }
 
-          if (numHands > 0) {
+          const effectiveHandCount = stableHandCountRef.current;
+
+          if (effectiveHandCount !== numHandsRef.current) {
+            numHandsRef.current = effectiveHandCount;
+            setNumHandsDetected(effectiveHandCount);
+          }
+
+          if (effectiveHandCount > 0) {
             if (!handDetectedRef.current) {
               handDetectedRef.current = true;
               setIsHandDetected(true);
             }
             
             // Draw all detected hands
-            results.multiHandLandmarks.forEach(lm => {
+            activeLandmarks.forEach(lm => {
+              if (!Array.isArray(lm) || lm.length === 0) return;
               const mirrored = lm.map(p => ({ ...p, x: 1 - p.x }));
               drawHand(mirrored, ctx, width, height);
             });
 
             // Only process gestures if exactly ONE hand is detected
-            if (numHands === 1) {
-              const landmarks = results.multiHandLandmarks[0];
+            if (effectiveHandCount === 1) {
+              const landmarks = Array.isArray(activeLandmarks[0]) ? activeLandmarks[0] : [];
+              if (landmarks.length === 0) {
+                if (mounted) {
+                  onGesture('NONE');
+                }
+                return;
+              }
               const mirrored = landmarks.map(lm => ({ ...lm, x: 1 - lm.x }));
               const gesture = classifyGesture(landmarks);
-              const now = performance.now();
               let emittedGesture = gesture;
 
               const palmPoints = [0, 1, 2, 5, 9, 13, 17];
@@ -206,19 +231,27 @@ export default function useHandGestures(onGesture) {
                 swipeTrack.current.locked = false;
               }
 
-              onGesture(emittedGesture);
+              if (mounted) {
+                onGesture(emittedGesture);
+              }
             } else {
               // Too many hands for reliable gestures
               swipeTrack.current.points = [];
               swipeTrack.current.locked = false;
-              onGesture('NONE');
+              if (mounted) {
+                onGesture('NONE');
+              }
             }
           } else {
             if (handDetectedRef.current) {
               handDetectedRef.current = false;
-              setIsHandDetected(false);
+              if (mounted) {
+                setIsHandDetected(false);
+              }
             }
-            onGesture('NONE');
+            if (mounted) {
+              onGesture('NONE');
+            }
           }
         });
 

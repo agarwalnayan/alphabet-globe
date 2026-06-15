@@ -28,18 +28,21 @@ export default function AdminPanel({ onModelsUpdated, models }) {
   };
 
   const addFilesToQueue = useCallback((files) => {
-    const newUploads = { ...uploads };
-    Array.from(files).forEach(file => {
-      if (!file.name.toLowerCase().endsWith('.glb')) return;
-      // Try to extract letter from filename: A.glb, letter_A.glb, etc.
-      const base = file.name.replace(/\.glb$/i, '').toUpperCase().trim();
-      const letter = base.slice(-1); // take last char as letter
-      if (ALPHABET.includes(letter)) {
-        newUploads[letter] = { file, status: 'queued', error: null };
-      }
+    const incomingFiles = Array.from(files || []).filter(file => file.name.toLowerCase().endsWith('.glb'));
+    if (incomingFiles.length === 0) return;
+
+    setUploads(prev => {
+      const newUploads = { ...prev };
+      incomingFiles.forEach(file => {
+        const base = file.name.replace(/\.glb$/i, '').toUpperCase().trim();
+        const letter = base.slice(-1);
+        if (ALPHABET.includes(letter)) {
+          newUploads[letter] = { file, status: 'queued', error: null };
+        }
+      });
+      return newUploads;
     });
-    setUploads(newUploads);
-  }, [uploads]);
+  }, []);
 
   const handleDrop = useCallback((e) => {
     e.preventDefault();
@@ -70,6 +73,10 @@ export default function AdminPanel({ onModelsUpdated, models }) {
   const uploadAll = async () => {
     const queued = Object.entries(uploads).filter(([, v]) => v.status === 'queued');
     if (queued.length === 0) return;
+    if (!password.trim()) {
+      setGlobalError('Please enter the admin password first.');
+      return;
+    }
 
     setGlobalError('');
     setSuccessMsg('');

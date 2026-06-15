@@ -8,14 +8,17 @@ export default function App() {
   const [models, setModels] = useState([]);
 
   const fetchModels = async () => {
-    try {
-      const res = await fetch('/api/models');
-      const data = await res.json();
-      setModels(data.models || []);
-    } catch (err) {
-      console.error('Failed to fetch models:', err);
-    }
-  };
+  try {
+    const API_URL = import.meta.env.VITE_API_URL;
+
+    const res = await fetch(`${API_URL}/api/models`);
+    const data = await res.json();
+
+    setModels(data.models || []);
+  } catch (err) {
+    console.error('Failed to fetch models:', err);
+  }
+};
 
   useEffect(() => {
     fetchModels();
