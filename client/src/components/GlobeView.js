@@ -3,26 +3,8 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import useHandGestures from '../hooks/useHandGestures';
-import { sortModelsAlphabetically } from './globeUtils';
+import { equatorPoints, getFocusedAlphabetWindow, sortModelsAlphabetically } from './globeUtils';
 import './GlobeView.css';
-
-// Distribute N points on a sphere (Fibonacci spiral)
-function fibonacciSpherePoints(n, radius = 3.2) {
-  // Fibonacci-style elevation (theta) but use a negative phi progression so
-  // the letters advance in the same direction the UI expects as the index increases.
-  const points = [];
-  for (let i = 0; i < n; i++) {
-    const theta = Math.acos(1 - (2 * (i + 0.5)) / n);
-    const phi = -(2 * Math.PI * i) / n;
-    points.push({
-      x: radius * Math.sin(theta) * Math.cos(phi),
-      y: radius * Math.cos(theta),
-      z: radius * Math.sin(theta) * Math.sin(phi),
-      phi,
-    });
-  }
-  return points;
-}
 
 // Single letter model on the globe
 function LetterModel({ url, position, isActive, index, totalLetters, showOnlyCurrentLetter }) {
@@ -63,10 +45,16 @@ function LetterModel({ url, position, isActive, index, totalLetters, showOnlyCur
       groupRef.current.position.lerp(targetPos, delta * 5);
     }
 
-    // Spin active letter slowly
+    const phi = Math.atan2(position[0], position[2]);
+    
     if (isActive) {
-      groupRef.current.rotation.y += delta * 0.8;
+      // When the globe stops, the active letter continuously rotates 360 degrees
+      groupRef.current.rotation.y += delta * 1.5;
+    } else {
+      // When inactive, simply face outwards
+      groupRef.current.rotation.y = phi;
     }
+
   });
 
   // Opacity by distance from "front" or hide if not showing
@@ -109,14 +97,14 @@ function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentInd
   }, [models]);
 
   const points = React.useMemo(() => {
-    return fibonacciSpherePoints(sortedModels.length);
+    return equatorPoints(sortedModels.length);
   }, [sortedModels.length]);
 
   const normalizeAngle = useCallback((angle) => {
     return THREE.MathUtils.euclideanModulo(angle + Math.PI, 2 * Math.PI) - Math.PI;
   }, []);
 
-  const frontOffset = Math.PI / 2;
+  const frontOffset = 0;
 
   const computeFrontIndex = useCallback(() => {
     if (!globeRef.current) return currentIndex;
@@ -163,7 +151,7 @@ function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentInd
   useFrame((state, delta) => {
     if (!globeRef.current) return;
     if (isSpinning) {
-      globeRef.current.rotation.y += delta * spinSpeed;
+      globeRef.current.rotation.y -= delta * spinSpeed;
       currentRotation.current = globeRef.current.rotation.y;
     } else {
       currentRotation.current = THREE.MathUtils.lerp(
@@ -213,7 +201,7 @@ export default function GlobeView({ models }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [spinSpeed, setSpinSpeed] = useState(0.8);
+  const [spinSpeed, setSpinSpeed] = useState(0.25);
   const [gesture, setGesture] = useState('NONE');
   const [gestureConfidence, setGestureConfidence] = useState(0);
   const [showOnlyCurrentLetter, setShowOnlyCurrentLetter] = useState(false);
@@ -271,8 +259,9 @@ export default function GlobeView({ models }) {
   const goPrev = () => setCurrentIndex(prev => (prev - 1 + displayModelCount) % displayModelCount);
   const toggleSpin = () => setIsSpinning(s => !s);
 
-  const displayIndex = isSpinning ? focusedIndex : currentIndex;
+  const displayIndex = focusedIndex;
   const currentLetter = sortedModels[displayIndex]?.letter || '?';
+  const focusLetters = getFocusedAlphabetWindow(sortedModels, displayIndex, 5);
 
   const resolveUrl = (url) => {
     if (url.startsWith('http')) return url;
@@ -326,6 +315,24 @@ export default function GlobeView({ models }) {
           <div className="empty-icon">⬡</div>
           <p className="empty-title">No Models Loaded</p>
           <p className="empty-sub">Upload GLB files in the Admin panel to begin</p>
+        </div>
+      )}
+
+      {/* Left focus panel */}
+      {sortedModels.length > 0 && (
+        <div className="focus-panel">
+          <div className="focus-panel-title">FOCUS</div>
+          <div className="focus-panel-current">{currentLetter}</div>
+          <div className="focus-panel-letters">
+            {focusLetters.map((letter, index) => {
+              const isCenter = index === Math.floor(focusLetters.length / 2);
+              return (
+                <div key={`${letter}-${index}`} className={`focus-letter ${isCenter ? 'active' : ''}`}>
+                  {letter}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
