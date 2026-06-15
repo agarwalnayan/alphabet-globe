@@ -206,8 +206,11 @@ export default function GlobeView({ models }) {
   const [gestureConfidence, setGestureConfidence] = useState(0);
   const [showOnlyCurrentLetter, setShowOnlyCurrentLetter] = useState(false);
   const [isSetupComplete, setIsSetupComplete] = useState(false);
+  const [isReturningToSetup, setIsReturningToSetup] = useState(false);
+  const [redirectCountdown, setRedirectCountdown] = useState(10);
+  const [autoRedirectEnabled, setAutoRedirectEnabled] = useState(true);
   const setupTimeoutRef = useRef(null);
-  const idleTimeoutRef = useRef(null);
+  const redirectTimerRef = useRef(null);
   const lastGestureRef = useRef('NONE');
   const recentSwipeAt = useRef(0);
 
@@ -287,36 +290,44 @@ export default function GlobeView({ models }) {
     };
   }, [numHandsDetected, isSetupComplete, isReady]);
 
-  // Idle timeout: Reset to setup mode if no hands are detected for 10 seconds
   useEffect(() => {
-    if (!isSetupComplete) {
-      if (idleTimeoutRef.current) {
-        clearTimeout(idleTimeoutRef.current);
-        idleTimeoutRef.current = null;
+    if (!autoRedirectEnabled || !isSetupComplete || numHandsDetected !== 0) {
+      if (redirectTimerRef.current) {
+        clearInterval(redirectTimerRef.current);
+        redirectTimerRef.current = null;
       }
+      setIsReturningToSetup(false);
+      setRedirectCountdown(10);
       return;
     }
 
-    if (numHandsDetected === 0) {
-      if (!idleTimeoutRef.current) {
-        idleTimeoutRef.current = setTimeout(() => {
+    setIsReturningToSetup(true);
+
+    if (redirectTimerRef.current) return;
+
+    redirectTimerRef.current = setInterval(() => {
+      setRedirectCountdown(prev => {
+        if (prev <= 1) {
+          if (redirectTimerRef.current) {
+            clearInterval(redirectTimerRef.current);
+            redirectTimerRef.current = null;
+          }
+          setIsReturningToSetup(false);
           setIsSetupComplete(false);
-          setIsSpinning(false); // Stop spinning when resetting
-        }, 10000);
-      }
-    } else {
-      if (idleTimeoutRef.current) {
-        clearTimeout(idleTimeoutRef.current);
-        idleTimeoutRef.current = null;
-      }
-    }
+          setIsSpinning(false);
+          return 10;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
     return () => {
-      if (idleTimeoutRef.current) {
-        clearTimeout(idleTimeoutRef.current);
+      if (redirectTimerRef.current) {
+        clearInterval(redirectTimerRef.current);
+        redirectTimerRef.current = null;
       }
     };
-  }, [numHandsDetected, isSetupComplete]);
+  }, [numHandsDetected, isSetupComplete, autoRedirectEnabled]);
 
   const goNext = () => setCurrentIndex(prev => (prev + 1) % displayModelCount);
   const goPrev = () => setCurrentIndex(prev => (prev - 1 + displayModelCount) % displayModelCount);
@@ -332,9 +343,25 @@ export default function GlobeView({ models }) {
   };
 
   const resolvedModels = sortedModels.map(m => ({ ...m, url: resolveUrl(m.url) }));
+  const showMultiHandOverlay = isReady && numHandsDetected > 1;
 
   return (
     <div className={`globe-container ${!isSetupComplete ? 'setup-mode' : ''}`}>
+      {isReturningToSetup && (
+        <div className="redirect-overlay" role="status" aria-live="polite">
+          <div className="redirect-card">
+            <div className="redirect-icon">👋</div>
+            <div className="redirect-title">NO HANDS DETECTED</div>
+            <div className="redirect-subtitle">
+              Directing you back to the setup screen in {redirectCountdown} second{redirectCountdown === 1 ? '' : 's'}.
+            </div>
+            <div className="redirect-progress">
+              <div className="redirect-progress-fill" style={{ width: `${(redirectCountdown / 10) * 100}%` }} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Setup Overlay Background */}
       {!isSetupComplete && (
         <div className="setup-overlay">
@@ -411,6 +438,16 @@ export default function GlobeView({ models }) {
         />
       </Canvas>
 
+      {showMultiHandOverlay && (
+        <div className="multi-hand-overlay" role="alert">
+          <div className="multi-hand-card">
+            <div className="multi-hand-icon">✋✋</div>
+            <div className="multi-hand-title">MULTIPLE HANDS DETECTED</div>
+            <div className="multi-hand-subtitle">Please show only one hand for the best experience.</div>
+          </div>
+        </div>
+      )}
+
       {/* Empty state */}
       {sortedModels.length === 0 && (
         <div className="empty-state">
@@ -451,7 +488,7 @@ export default function GlobeView({ models }) {
       <div className="gesture-hud">
         <div className={`gesture-status ${!isReady ? 'loading' : numHandsDetected > 1 ? 'error' : isHandDetected ? 'ready' : 'not-detected'}`}>
           <div className="gesture-dot" />
-          <span>{!isReady ? 'LOADING HAND TRACKER...' : numHandsDetected > 1 ? 'MULTIPLE HANDS DETECTED!' : isHandDetected ? 'HAND DETECTED' : 'HAND NOT DETECTED'}</span>
+          <span>{!isReady ? 'LOADING HAND TRACKER...' : numHandsDetected > 1 ? 'MULTIPLE HANDS' : isHandDetected ? 'HAND DETECTED' : 'HAND NOT DETECTED'}</span>
         </div>
 
         {gesture && gesture !== 'NONE' && gesture !== 'OPEN_PALM' && gesture !== 'FIST' && gesture !== 'SPIN' && (
@@ -500,6 +537,9 @@ export default function GlobeView({ models }) {
           {isSpinning ? '⏸ STOP' : '▶ SPIN'}
         </button>
         <button className="ctrl-btn" onClick={goNext}>NEXT ▶</button>
+        <button className={`ctrl-btn ${autoRedirectEnabled ? 'active' : ''}`} onClick={() => setAutoRedirectEnabled(prev => !prev)}>
+          {autoRedirectEnabled ? '⏱ AUTO REDIRECT ON' : '⏱ AUTO REDIRECT OFF'}
+        </button>
         <button className="ctrl-btn" onClick={() => { setIsSetupComplete(false); setIsSpinning(false); }}>🔄 RECALIBRATE</button>
       </div>
     </div>
