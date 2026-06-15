@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import GlobeView from './components/GlobeView';
 import AdminPanel from './components/AdminPanel';
+import { apiUrl, normalizeModelUrl } from './config/api';
 import './App.css';
 
 export default function App() {
@@ -8,26 +9,18 @@ export default function App() {
   const [models, setModels] = useState([]);
 
   const fetchModels = async () => {
-  try {
-    const API_URL = 'https://alphabet-globe.onrender.com';
-
-    console.log("API_URL =", API_URL);
-
-    const res = await fetch(`${API_URL}/api/models`);
-
-    console.log("Status =", res.status);
-    console.log("Response URL =", res.url);
-
-    const text = await res.text();
-    console.log("Response:", text);
-
-    const data = JSON.parse(text);
-
-    setModels(data.models || []);
-  } catch (err) {
-    console.error('Failed to fetch models:', err);
-  }
-};
+    try {
+      const res = await fetch(apiUrl('/api/models'));
+      if (!res.ok) throw new Error(`Failed to fetch models (${res.status})`);
+      const data = await res.json();
+      setModels((data.models || []).map(m => ({
+        ...m,
+        url: normalizeModelUrl(m.url)
+      })));
+    } catch (err) {
+      console.error('Failed to fetch models:', err);
+    }
+  };
 
   useEffect(() => {
     fetchModels();

@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import useHandGestures from '../hooks/useHandGestures';
+import { normalizeModelUrl } from '../config/api';
 import { equatorPoints, getFocusedAlphabetWindow, sortModelsAlphabetically } from './globeUtils';
 import './GlobeView.css';
 
@@ -337,10 +338,7 @@ export default function GlobeView({ models }) {
   const currentLetter = sortedModels[displayIndex]?.letter || '?';
   const focusLetters = getFocusedAlphabetWindow(sortedModels, displayIndex, 5);
 
-  const resolveUrl = (url) => {
-    if (url.startsWith('http')) return url;
-    return url; // CRA proxy handles it
-  };
+  const resolveUrl = (url) => normalizeModelUrl(url);
 
   const resolvedModels = sortedModels.map(m => ({ ...m, url: resolveUrl(m.url) }));
   const showMultiHandOverlay = isReady && numHandsDetected > 1;

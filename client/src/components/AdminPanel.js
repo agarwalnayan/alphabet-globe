@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { apiUrl } from '../config/api';
 import './AdminPanel.css';
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -93,7 +94,7 @@ export default function AdminPanel({ onModelsUpdated, models }) {
         const renamedFile = new File([file], `${letter}.glb`, { type: file.type });
         formData.append('models', renamedFile);
 
-        const res = await fetch('/api/upload', {
+        const res = await fetch(apiUrl('/api/upload'), {
           method: 'POST',
           headers: { 'x-upload-password': password },
           body: formData
@@ -123,7 +124,7 @@ export default function AdminPanel({ onModelsUpdated, models }) {
 
   const deleteModel = async (letter) => {
     try {
-      const res = await fetch(`/api/models/${letter}`, {
+      const res = await fetch(apiUrl(`/api/models/${letter}`), {
         method: 'DELETE',
         headers: { 'x-upload-password': password }
       });

@@ -6,6 +6,9 @@ const fs = require('fs');
 const multer = require('multer');
 
 const app = express();
+// Render (and similar hosts) terminate TLS at the edge; trust the proxy so
+// req.protocol is "https" and model URLs are not returned as http://.
+app.set('trust proxy', 1);
 const DEFAULT_PORT = 4000;
 const DEFAULT_UPLOAD_PASSWORD = 'alphabet@123';
 const PORT = Number(process.env.PORT) || DEFAULT_PORT;
@@ -45,6 +48,10 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB per file
 });
 
+function modelUrl(req, filename) {
+  return `${req.protocol}://${req.get('host')}/models/${filename}`;
+}
+
 // Password check middleware
 function checkPassword(req, res, next) {
   const pwd = req.headers['x-upload-password'] || req.body?.password;
@@ -67,7 +74,7 @@ app.get('/api/models', (req, res) => {
       .map(f => ({
         letter: path.basename(f, '.glb').toUpperCase(),
         filename: f,
-        url: `${req.protocol}://${req.get('host')}/models/${f}`
+        url: modelUrl(req, f)
       }))
       .sort((a, b) => a.letter.localeCompare(b.letter));
     res.json({ models: files });
@@ -84,7 +91,7 @@ app.post('/api/upload', checkPassword, upload.array('models', 26), (req, res) =>
   const uploaded = req.files.map(f => ({
     letter: path.basename(f.filename, '.glb').toUpperCase(),
     filename: f.filename,
-    url: `${req.protocol}://${req.get('host')}/models/${f.filename}`
+    url: modelUrl(req, f.filename)
   }));
   res.json({ success: true, uploaded });
 });
