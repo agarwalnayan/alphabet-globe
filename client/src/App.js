@@ -11,8 +11,17 @@ export default function App() {
   try {
     const API_URL = import.meta.env.VITE_API_URL;
 
+    console.log("API_URL =", API_URL);
+
     const res = await fetch(`${API_URL}/api/models`);
-    const data = await res.json();
+
+    console.log("Status =", res.status);
+    console.log("Response URL =", res.url);
+
+    const text = await res.text();
+    console.log("Response:", text);
+
+    const data = JSON.parse(text);
 
     setModels(data.models || []);
   } catch (err) {
