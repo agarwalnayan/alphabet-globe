@@ -44,6 +44,51 @@
   letter-spacing: 1px;
 }
 
+.model-loading-overlay {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 900;
+  pointer-events: none;
+}
+
+.model-loading-card {
+  min-width: 220px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(0, 10, 20, 0.92);
+  border: 1px solid rgba(0, 212, 255, 0.28);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+.model-loading-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #7dd3fc;
+  margin-bottom: 6px;
+}
+
+.model-loading-subtitle {
+  font-size: 12px;
+  color: rgba(232, 244, 248, 0.72);
+  margin-bottom: 10px;
+}
+
+.model-loading-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(125, 211, 252, 0.15);
+  overflow: hidden;
+}
+
+.model-loading-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+  transition: width 0.35s ease;
+}
+
 /* Left focus panel */
 .focus-panel {
   position: absolute;

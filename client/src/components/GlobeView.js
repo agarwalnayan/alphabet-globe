@@ -1,35 +1,89 @@
-import React, { useRef, useState, useEffect, useCallback, Suspense } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useGLTF, OrbitControls, Environment, Stars } from '@react-three/drei';
+import React, { useRef, useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { useGLTF, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import useHandGestures from '../hooks/useHandGestures';
 import { normalizeModelUrl } from '../config/api';
 import { equatorPoints, getFocusedAlphabetWindow, sortModelsAlphabetically } from './globeUtils';
 import './GlobeView.css';
 
-// Single letter model on the globe
-function LetterModel({ url, position, isActive, index, totalLetters, showOnlyCurrentLetter }) {
-  const { scene } = useGLTF(url);
-  const groupRef = useRef();
-  const clonedScene = scene.clone(true);
-  const targetPosRef = useRef(position);
+const gltfLoaderOptions = (loader) => {
+  loader.setCrossOrigin('anonymous');
+};
 
-  // Normalize material
-  clonedScene.traverse(child => {
+function prepareScene(scene) {
+  const clone = scene.clone(true);
+  clone.traverse(child => {
     if (child.isMesh) {
       child.castShadow = true;
       child.receiveShadow = true;
+      if (child.material) {
+        child.material = child.material.clone();
+        child.material.transparent = true;
+      }
     }
   });
 
+  const box = new THREE.Box3().setFromObject(clone);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  clone.position.sub(center);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  if (maxDim > 0) {
+    clone.scale.setScalar(0.8 / maxDim);
+  }
+  return clone;
+}
+
+class ModelErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error) {
+    console.error(`Failed to load model ${this.props.letter}:`, error);
+    this.props.onError?.();
+  }
+
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
+
+// Single letter model on the globe
+function LetterModel({
+  url,
+  position,
+  isActive,
+  index,
+  totalLetters,
+  showOnlyCurrentLetter,
+  onLoaded
+}) {
+  const { scene } = useGLTF(url, undefined, undefined, gltfLoaderOptions);
+  const groupRef = useRef();
+  const clonedScene = useMemo(() => prepareScene(scene), [scene]);
   const targetScale = showOnlyCurrentLetter && isActive ? 2.5 : (isActive ? 1.6 : 0.55);
   const currentScale = useRef(targetScale);
   const shouldShow = !showOnlyCurrentLetter || isActive;
 
+  useEffect(() => {
+    onLoaded?.();
+  }, [onLoaded]);
+
+  useEffect(() => {
+    currentScale.current = targetScale;
+  }, [targetScale]);
+
   useFrame((state, delta) => {
     if (!groupRef.current) return;
-    
-    // Smooth scale transition + gentle pulsing for fun
+
     currentScale.current = THREE.MathUtils.lerp(
       currentScale.current,
       targetScale,
@@ -38,7 +92,6 @@ function LetterModel({ url, position, isActive, index, totalLetters, showOnlyCur
     const pulse = 1 + 0.06 * Math.sin(state.clock.elapsedTime * 2 + index);
     groupRef.current.scale.setScalar(currentScale.current * pulse);
 
-    // Center the letter when showing only current
     if (showOnlyCurrentLetter && isActive) {
       groupRef.current.position.lerp(new THREE.Vector3(0, 0, 0), delta * 5);
     } else {
@@ -47,36 +100,35 @@ function LetterModel({ url, position, isActive, index, totalLetters, showOnlyCur
     }
 
     const phi = Math.atan2(position[0], position[2]);
-    
+
     if (isActive) {
-      // When the globe stops, the active letter continuously rotates 360 degrees
       groupRef.current.rotation.y += delta * 1.5;
     } else {
-      // When inactive, simply face outwards
       groupRef.current.rotation.y = phi;
     }
 
+    if (shouldShow) {
+      const frontPos = new THREE.Vector3(0, 0, 3.2);
+      const pos3 = new THREE.Vector3(...position);
+      const dist = pos3.distanceTo(frontPos);
+      const opacity = showOnlyCurrentLetter && isActive ? 1 : Math.max(0.15, 1 - dist / 7);
+      clonedScene.traverse(child => {
+        if (child.isMesh && child.material) {
+          child.material.opacity = opacity;
+        }
+      });
+    }
   });
 
-  // Opacity by distance from "front" or hide if not showing
   if (!shouldShow) {
     return <group ref={groupRef} position={position} />;
   }
-
-  const frontPos = new THREE.Vector3(0, 0, 3.2);
-  const pos3 = new THREE.Vector3(...position);
-  const dist = pos3.distanceTo(frontPos);
-  const opacity = showOnlyCurrentLetter && isActive ? 1 : Math.max(0.15, 1 - dist / 7);
 
   const hue = Math.round((index / Math.max(totalLetters, 1)) * 360);
 
   return (
     <group ref={groupRef} position={position}>
-      <primitive
-        object={clonedScene}
-        scale={1}
-        style={{ opacity }}
-      />
+      <primitive object={clonedScene} />
       {isActive && (
         <pointLight intensity={3} distance={2.5} color={`hsl(${hue},80%,60%)`} />
       )}
@@ -84,8 +136,28 @@ function LetterModel({ url, position, isActive, index, totalLetters, showOnlyCur
   );
 }
 
+function LetterModelSlot({ model, ...props }) {
+  return (
+    <ModelErrorBoundary letter={model.letter} onError={props.onError}>
+      <Suspense fallback={null}>
+        <LetterModel url={model.url} {...props} />
+      </Suspense>
+    </ModelErrorBoundary>
+  );
+}
+
 // Globe that rotates based on currentIndex
-function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentIndexChange, showOnlyCurrentLetter, onFocusIndexChange }) {
+function LetterGlobe({
+  models,
+  currentIndex,
+  isSpinning,
+  spinSpeed,
+  onCurrentIndexChange,
+  showOnlyCurrentLetter,
+  onFocusIndexChange,
+  onModelLoaded,
+  onModelError
+}) {
   const globeRef = useRef();
   const targetRotation = useRef(0);
   const currentRotation = useRef(0);
@@ -169,14 +241,16 @@ function LetterGlobe({ models, currentIndex, isSpinning, spinSpeed, onCurrentInd
   return (
     <group ref={globeRef} position={[-1.3, 0, 0]}>
       {sortedModels.map((model, i) => (
-        <LetterModel
+        <LetterModelSlot
           key={model.letter}
-          url={model.url}
+          model={model}
           position={[points[i].x, points[i].y, points[i].z]}
           isActive={i === currentIndex && !isSpinning}
           index={i}
           totalLetters={sortedModels.length}
           showOnlyCurrentLetter={showOnlyCurrentLetter}
+          onLoaded={() => onModelLoaded?.(model.letter)}
+          onError={() => onModelError?.(model.letter)}
         />
       ))}
       {/* Wireframe sphere guide */}
@@ -210,6 +284,8 @@ export default function GlobeView({ models }) {
   const [isReturningToSetup, setIsReturningToSetup] = useState(false);
   const [redirectCountdown, setRedirectCountdown] = useState(10);
   const [autoRedirectEnabled, setAutoRedirectEnabled] = useState(true);
+  const [loadedLetters, setLoadedLetters] = useState(() => new Set());
+  const [failedLetters, setFailedLetters] = useState(() => new Set());
   const setupTimeoutRef = useRef(null);
   const redirectTimerRef = useRef(null);
   const lastGestureRef = useRef('NONE');
@@ -342,6 +418,35 @@ export default function GlobeView({ models }) {
 
   const resolvedModels = sortedModels.map(m => ({ ...m, url: resolveUrl(m.url) }));
   const showMultiHandOverlay = isReady && numHandsDetected > 1;
+  const modelsLoading = resolvedModels.length > 0 && loadedLetters.size < resolvedModels.length;
+  const loadedCount = loadedLetters.size;
+  const totalModelCount = resolvedModels.length;
+
+  useEffect(() => {
+    setLoadedLetters(new Set());
+    setFailedLetters(new Set());
+    sortedModels.forEach(model => {
+      useGLTF.preload(normalizeModelUrl(model.url), undefined, undefined, gltfLoaderOptions);
+    });
+  }, [sortedModels]);
+
+  const handleModelLoaded = useCallback((letter) => {
+    setLoadedLetters(prev => {
+      if (prev.has(letter)) return prev;
+      const next = new Set(prev);
+      next.add(letter);
+      return next;
+    });
+  }, []);
+
+  const handleModelError = useCallback((letter) => {
+    setFailedLetters(prev => {
+      if (prev.has(letter)) return prev;
+      const next = new Set(prev);
+      next.add(letter);
+      return next;
+    });
+  }, []);
 
   return (
     <div className={`globe-container ${!isSetupComplete ? 'setup-mode' : ''}`}>
@@ -399,6 +504,25 @@ export default function GlobeView({ models }) {
         </div>
       )}
 
+      {/* Model loading indicator */}
+      {modelsLoading && (
+        <div className="model-loading-overlay" role="status" aria-live="polite">
+          <div className="model-loading-card">
+            <div className="model-loading-title">LOADING 3D MODELS</div>
+            <div className="model-loading-subtitle">
+              {loadedCount} / {totalModelCount} letters ready
+              {failedLetters.size > 0 ? ` · ${failedLetters.size} failed` : ''}
+            </div>
+            <div className="model-loading-progress">
+              <div
+                className="model-loading-progress-fill"
+                style={{ width: `${(loadedCount / totalModelCount) * 100}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 3D Canvas */}
       <Canvas
         camera={{ position: [-0.9, 0, 8], fov: 55 }}
@@ -410,20 +534,20 @@ export default function GlobeView({ models }) {
         <pointLight position={[-5, 3, -5]} intensity={0.8} color="#1a4fff" />
         <pointLight position={[5, -3, 5]} intensity={0.6} color="#ff6b35" />
 
-        <Suspense fallback={null}>
-          {resolvedModels.length > 0 && (
-            <LetterGlobe
-              models={resolvedModels}
-              currentIndex={currentIndex}
-              isSpinning={isSpinning}
-              spinSpeed={spinSpeed}
-              onCurrentIndexChange={setCurrentIndex}
-              onFocusIndexChange={setFocusedIndex}
-              showOnlyCurrentLetter={showOnlyCurrentLetter}
-            />
-          )}
-          <EquatorRing />
-        </Suspense>
+        {resolvedModels.length > 0 && (
+          <LetterGlobe
+            models={resolvedModels}
+            currentIndex={currentIndex}
+            isSpinning={isSpinning}
+            spinSpeed={spinSpeed}
+            onCurrentIndexChange={setCurrentIndex}
+            onFocusIndexChange={setFocusedIndex}
+            showOnlyCurrentLetter={showOnlyCurrentLetter}
+            onModelLoaded={handleModelLoaded}
+            onModelError={handleModelError}
+          />
+        )}
+        <EquatorRing />
 
         <OrbitControls
           enablePan={false}
